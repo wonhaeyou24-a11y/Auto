@@ -3,47 +3,31 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 
-// [1. 한글 Pretendard 폰트 자동 등록]
+// [1. Pretendard 폰트 단일 등록]
 const FONT_PATH = path.join(__dirname, 'fonts', 'Pretendard-Bold.ttf');
-let FONT_FAMILY = 'sans-serif';
+let ACTIVE_FONT = 'sans-serif';
 
 if (fs.existsSync(FONT_PATH) && fs.statSync(FONT_PATH).size > 100000) {
   try {
     registerFont(FONT_PATH, { family: 'Pretendard', weight: 'bold' });
-    FONT_FAMILY = 'Pretendard';
-    console.log('✅ Pretendard 전용 폰트가 Canvas에 정상 적용되었습니다.');
+    ACTIVE_FONT = 'Pretendard';
   } catch (e) {
-    console.warn('⚠️ 폰트 등록 실패, 기본 폰트를 사용합니다.');
+    console.warn('⚠️ 폰트 등록 실패, 기본 sans-serif 폰트를 사용합니다.');
   }
 }
 
 const WIDTH = 1080;
 const HEIGHT = 1080;
-const SAFE = 96;
+const SAFE = 80;
 const CONTENT_WIDTH = WIDTH - SAFE * 2;
 const BRAND_HANDLE = '@my_instastudio';
 
 const LAYOUTS = {
-  modern: {
-    label: '01 모던',
-    description: '배경 사진 + 강한 후킹 + 큰 제목 + 포인트 바'
-  },
-  editorial: {
-    label: '02 에디토리얼',
-    description: '매거진형 번호/제목 배치 + 다크 글래스'
-  },
-  split: {
-    label: '03 스플릿',
-    description: '좌측 컬러 패널 + 우측 배경 사진'
-  },
-  card: {
-    label: '04 카드',
-    description: '사진 배경 위 플로팅 카드 레이아웃'
-  },
-  minimal: {
-    label: '05 미니멀',
-    description: '사진과 텍스트 여백 중심의 깔끔한 구성'
-  }
+  modern: { label: '01 모던', description: '배경 사진 + 대형 후킹 제목 + 포인트 바' },
+  editorial: { label: '02 에디토리얼', description: '매거진형 대형 번호/제목 배치 + 다크 글래스' },
+  split: { label: '03 스플릿', description: '좌측 컬러 패널 + 우측 대형 콘텐츠' },
+  card: { label: '04 카드', description: '사진 배경 위 대형 플로팅 카드 레이아웃' },
+  minimal: { label: '05 미니멀', description: '여백과 가독성 중심의 깔끔한 구성' }
 };
 
 function normalizeText(value) {
@@ -53,6 +37,7 @@ function normalizeText(value) {
     .trim();
 }
 
+// 한글 글자 단위 정밀 자동 줄바꿈
 function getLines(ctx, text, maxWidth) {
   const normalized = normalizeText(text);
   if (!normalized) return [];
@@ -84,106 +69,48 @@ function getLines(ctx, text, maxWidth) {
   return lines;
 }
 
-function fitText(ctx, text, options = {}) {
-  const {
-    maxWidth,
-    maxHeight,
-    maxFontSize = 64,
-    minFontSize = 24,
-    fontWeight = '700',
-    lineHeightRatio = 1.3,
-    maxLines = Infinity
-  } = options;
-
-  const safeText = normalizeText(text);
-  if (!safeText) {
-    return {
-      fontSize: minFontSize,
-      lineHeight: minFontSize * lineHeightRatio,
-      lines: []
-    };
-  }
-
-  for (let fontSize = maxFontSize; fontSize >= minFontSize; fontSize -= 2) {
-    ctx.font = `${fontWeight} ${fontSize}px ${FONT_FAMILY}`;
-    const lines = getLines(ctx, safeText, maxWidth);
-    const lineHeight = Math.round(fontSize * lineHeightRatio);
-    const height = lines.length * lineHeight;
-
-    if (lines.length <= maxLines && height <= maxHeight) {
-      return { fontSize, lineHeight, lines, height };
-    }
-  }
-
-  ctx.font = `${fontWeight} ${minFontSize}px ${FONT_FAMILY}`;
-  const lines = getLines(ctx, safeText, maxWidth);
-  const lineHeight = Math.round(minFontSize * lineHeightRatio);
-
-  return {
-    fontSize: minFontSize,
-    lineHeight,
-    lines,
-    height: lines.length * lineHeight
-  };
-}
-
+// 텍스트 블록 렌더링 (Node canvas 단일 폰트 파싱 보장)
 function drawTextBlock(ctx, text, options = {}) {
   const {
     x,
     y,
     width,
-    height,
-    maxFontSize = 64,
-    minFontSize = 24,
-    fontWeight = '700',
-    lineHeightRatio = 1.3,
-    maxLines = Infinity,
+    fontSize = 48,
+    fontWeight = 'bold',
+    lineHeightRatio = 1.35,
     color = '#ffffff',
     align = 'left',
-    vertical = 'top',
     shadow = true
   } = options;
 
-  const fitted = fitText(ctx, text, {
-    maxWidth: width,
-    maxHeight: height,
-    maxFontSize,
-    minFontSize,
-    fontWeight,
-    lineHeightRatio,
-    maxLines
-  });
+  const safeText = normalizeText(text);
+  if (!safeText) return;
 
   ctx.save();
-  ctx.font = `${fontWeight} ${fitted.fontSize}px ${FONT_FAMILY}`;
+  // canvas 라이브러리 전용 단일 폰트 포맷 강제
+  ctx.font = `${fontWeight} ${fontSize}px ${ACTIVE_FONT}`;
+  const lines = getLines(ctx, safeText, width);
+  const lineHeight = Math.round(fontSize * lineHeightRatio);
+
   ctx.fillStyle = color;
   ctx.textAlign = align;
   ctx.textBaseline = 'top';
 
   if (shadow) {
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
-    ctx.shadowBlur = 10;
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.85)';
+    ctx.shadowBlur = 14;
     ctx.shadowOffsetX = 2;
     ctx.shadowOffsetY = 2;
   }
 
-  let startY = y;
-  if (vertical === 'middle') {
-    startY = y + Math.max(0, (height - fitted.height) / 2);
-  } else if (vertical === 'bottom') {
-    startY = y + Math.max(0, height - fitted.height);
-  }
-
-  for (let i = 0; i < fitted.lines.length; i++) {
+  for (let i = 0; i < lines.length; i++) {
     let drawX = x;
     if (align === 'center') drawX = x + width / 2;
     if (align === 'right') drawX = x + width;
 
-    ctx.fillText(fitted.lines[i], drawX, startY + i * fitted.lineHeight);
+    ctx.fillText(lines[i], drawX, y + i * lineHeight);
   }
   ctx.restore();
-
-  return { ...fitted, startY };
 }
 
 function roundRect(ctx, x, y, w, h, r) {
@@ -197,13 +124,12 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
-// 배경 이미지 다운로드 및 Cover 비율 채우기
 async function drawBackgroundImage(ctx, imageUrl) {
   if (!imageUrl) return false;
   try {
     let imgBuffer;
     if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
-      const response = await axios.get(imageUrl, { responseType: 'arraybuffer', timeout: 6000 });
+      const response = await axios.get(imageUrl, { responseType: 'arraybuffer', timeout: 5000 });
       imgBuffer = Buffer.from(response.data);
     } else {
       const localPath = path.join(__dirname, 'public', imageUrl);
@@ -228,7 +154,6 @@ async function drawBackgroundImage(ctx, imageUrl) {
   }
 }
 
-// 배경 및 딤드 레이어 처리
 async function drawBackground(ctx, layout, index, imageUrl) {
   const hasImage = await drawBackgroundImage(ctx, imageUrl);
 
@@ -248,253 +173,196 @@ async function drawBackground(ctx, layout, index, imageUrl) {
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
   }
 
-  // 딤드 오버레이
-  if (layout === 'modern') {
-    const overlay = ctx.createLinearGradient(0, 0, 0, HEIGHT);
-    overlay.addColorStop(0, 'rgba(15, 23, 42, 0.72)');
-    overlay.addColorStop(0.5, 'rgba(15, 23, 42, 0.85)');
-    overlay.addColorStop(1, 'rgba(15, 23, 42, 0.96)');
-    ctx.fillStyle = overlay;
-    ctx.fillRect(0, 0, WIDTH, HEIGHT);
-  } else if (layout === 'editorial') {
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
-    ctx.fillRect(0, 0, WIDTH, HEIGHT);
-  } else if (layout === 'split') {
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
-    ctx.fillRect(0, 0, WIDTH, HEIGHT);
-  } else if (layout === 'card') {
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.6)';
-    ctx.fillRect(0, 0, WIDTH, HEIGHT);
-  } else {
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-    ctx.fillRect(0, 0, WIDTH, HEIGHT);
-  }
+  // 선명한 가독성 오버레이 (Dark 75~90%)
+  const overlay = ctx.createLinearGradient(0, 0, 0, HEIGHT);
+  overlay.addColorStop(0, 'rgba(15, 23, 42, 0.70)');
+  overlay.addColorStop(0.5, 'rgba(15, 23, 42, 0.82)');
+  overlay.addColorStop(1, 'rgba(15, 23, 42, 0.94)');
+  ctx.fillStyle = overlay;
+  ctx.fillRect(0, 0, WIDTH, HEIGHT);
 }
 
-// 상단 페이지 번호 및 하단 워터마크
-function drawDecorations(ctx, index, total, isDarkBg = true) {
+function drawDecorations(ctx, index, total) {
   // 상단 슬라이드 인디케이터
-  ctx.fillStyle = isDarkBg ? '#94a3b8' : '#64748b';
-  ctx.font = `700 24px ${FONT_FAMILY}`;
+  ctx.fillStyle = '#cbd5e1';
+  ctx.font = `bold 30px ${ACTIVE_FONT}`;
   ctx.textAlign = 'right';
   ctx.textBaseline = 'top';
-  ctx.fillText(
-    `${String(index + 1).padStart(2, '0')} / ${String(total).padStart(2, '0')}`,
-    WIDTH - SAFE,
-    SAFE
-  );
+  ctx.fillText(`${String(index + 1).padStart(2, '0')} / ${String(total).padStart(2, '0')}`, WIDTH - SAFE, SAFE - 10);
 
-  // 하단 브랜드 계정 워터마크
+  // 하단 브랜드 계정명
   ctx.textAlign = 'center';
-  ctx.font = `600 22px ${FONT_FAMILY}`;
-  ctx.fillStyle = isDarkBg ? 'rgba(255, 255, 255, 0.45)' : 'rgba(0, 0, 0, 0.4)';
-  ctx.fillText(BRAND_HANDLE, WIDTH / 2, HEIGHT - SAFE + 25);
+  ctx.font = `bold 26px ${ACTIVE_FONT}`;
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+  ctx.fillText(BRAND_HANDLE, WIDTH / 2, HEIGHT - SAFE + 30);
 }
 
 // 01 MODERN
 function drawModern(ctx, slide, index, total) {
   const accent = '#f43f5e';
-  drawDecorations(ctx, index, total, true);
+  drawDecorations(ctx, index, total);
 
   ctx.fillStyle = accent;
-  ctx.fillRect(SAFE, 170, 150, 10);
+  ctx.fillRect(SAFE, 150, 160, 12);
 
   if (slide.type === 'cover') {
     ctx.fillStyle = accent;
-    ctx.font = `800 34px ${FONT_FAMILY}`;
+    ctx.font = `bold 36px ${ACTIVE_FONT}`;
     ctx.textAlign = 'left';
-    ctx.fillText('HOT ISSUE', SAFE, 220);
+    ctx.fillText('HOT ISSUE', SAFE, 190);
 
     drawTextBlock(ctx, slide.title, {
       x: SAFE,
-      y: 285,
+      y: 280,
       width: CONTENT_WIDTH,
-      height: 350,
-      maxFontSize: 80,
-      minFontSize: 42,
-      maxLines: 5,
-      fontWeight: '800',
-      lineHeightRatio: 1.18,
+      fontSize: 76,
+      fontWeight: 'bold',
+      lineHeightRatio: 1.25,
       color: '#ffffff'
     });
 
     drawTextBlock(ctx, slide.subtitle, {
       x: SAFE,
-      y: 700,
+      y: 720,
       width: CONTENT_WIDTH,
-      height: 140,
-      maxFontSize: 36,
-      minFontSize: 24,
-      maxLines: 3,
-      fontWeight: '500',
-      lineHeightRatio: 1.35,
-      color: '#cbd5e1'
+      fontSize: 38,
+      fontWeight: 'bold',
+      color: '#e2e8f0'
     });
   } else if (slide.type === 'body') {
     ctx.fillStyle = accent;
-    ctx.font = `800 36px ${FONT_FAMILY}`;
+    ctx.font = `bold 42px ${ACTIVE_FONT}`;
     ctx.textAlign = 'left';
     ctx.fillText(`STEP ${slide.step || String(index).padStart(2, '0')}`, SAFE, 190);
 
     drawTextBlock(ctx, slide.title, {
       x: SAFE,
-      y: 275,
+      y: 280,
       width: CONTENT_WIDTH,
-      height: 250,
-      maxFontSize: 66,
-      minFontSize: 38,
-      maxLines: 4,
-      fontWeight: '800',
-      lineHeightRatio: 1.18,
+      fontSize: 66,
+      fontWeight: 'bold',
+      lineHeightRatio: 1.25,
       color: '#ffffff'
     });
 
     drawTextBlock(ctx, slide.content, {
       x: SAFE,
-      y: 575,
+      y: 540,
       width: CONTENT_WIDTH,
-      height: 300,
-      maxFontSize: 38,
-      minFontSize: 24,
-      maxLines: 7,
-      fontWeight: '500',
-      lineHeightRatio: 1.45,
-      color: '#e2e8f0'
+      fontSize: 44,
+      fontWeight: 'bold',
+      lineHeightRatio: 1.5,
+      color: '#f8fafc'
     });
   } else {
     ctx.fillStyle = accent;
-    ctx.font = `800 32px ${FONT_FAMILY}`;
+    ctx.font = `bold 38px ${ACTIVE_FONT}`;
     ctx.textAlign = 'center';
-    ctx.fillText('SAVE THIS', WIDTH / 2, 250);
+    ctx.fillText('SAVE THIS', WIDTH / 2, 210);
 
     drawTextBlock(ctx, slide.title || '저장해두고 필요할 때 꺼내보세요!', {
       x: SAFE,
-      y: 330,
+      y: 320,
       width: CONTENT_WIDTH,
-      height: 300,
-      maxFontSize: 68,
-      minFontSize: 38,
-      maxLines: 4,
-      fontWeight: '800',
-      lineHeightRatio: 1.18,
+      fontSize: 72,
+      fontWeight: 'bold',
+      lineHeightRatio: 1.3,
       color: '#ffffff',
-      align: 'center',
-      vertical: 'middle'
+      align: 'center'
     });
 
     drawTextBlock(ctx, slide.subtitle, {
       x: SAFE,
-      y: 700,
+      y: 720,
       width: CONTENT_WIDTH,
-      height: 120,
-      maxFontSize: 34,
-      minFontSize: 22,
-      maxLines: 2,
-      fontWeight: '600',
+      fontSize: 40,
+      fontWeight: 'bold',
       color: '#cbd5e1',
-      align: 'center',
-      vertical: 'middle'
+      align: 'center'
     });
   }
 }
 
 // 02 EDITORIAL
 function drawEditorial(ctx, slide, index, total) {
-  drawDecorations(ctx, index, total, true);
-
+  drawDecorations(ctx, index, total);
   ctx.fillStyle = '#f59e0b';
-  ctx.fillRect(SAFE, 170, 8, 740);
+  ctx.fillRect(SAFE, 150, 10, 780);
+
+  const innerX = SAFE + 48;
+  const innerW = CONTENT_WIDTH - 48;
 
   if (slide.type === 'cover') {
     ctx.fillStyle = '#f59e0b';
-    ctx.font = `700 28px ${FONT_FAMILY}`;
+    ctx.font = `bold 36px ${ACTIVE_FONT}`;
     ctx.textAlign = 'left';
-    ctx.fillText('INSIGHT / FEATURE', SAFE + 44, 185);
+    ctx.fillText('INSIGHT / FEATURE', innerX, 170);
 
     drawTextBlock(ctx, slide.title, {
-      x: SAFE + 44,
+      x: innerX,
       y: 270,
-      width: CONTENT_WIDTH - 44,
-      height: 350,
-      maxFontSize: 74,
-      minFontSize: 42,
-      maxLines: 5,
-      fontWeight: '800',
-      lineHeightRatio: 1.18,
+      width: innerW,
+      fontSize: 76,
+      fontWeight: 'bold',
+      lineHeightRatio: 1.25,
       color: '#ffffff'
     });
 
     drawTextBlock(ctx, slide.subtitle, {
-      x: SAFE + 44,
-      y: 700,
-      width: CONTENT_WIDTH - 44,
-      height: 140,
-      maxFontSize: 34,
-      minFontSize: 22,
-      maxLines: 3,
-      fontWeight: '500',
+      x: innerX,
+      y: 720,
+      width: innerW,
+      fontSize: 38,
+      fontWeight: 'bold',
       color: '#cbd5e1'
     });
   } else if (slide.type === 'body') {
     ctx.fillStyle = '#f59e0b';
-    ctx.font = `800 100px ${FONT_FAMILY}`;
+    ctx.font = `bold 110px ${ACTIVE_FONT}`;
     ctx.textAlign = 'left';
-    ctx.fillText(slide.step || String(index).padStart(2, '0'), SAFE + 44, 185);
+    ctx.fillText(slide.step || String(index).padStart(2, '0'), innerX, 150);
 
     drawTextBlock(ctx, slide.title, {
-      x: SAFE + 44,
-      y: 330,
-      width: CONTENT_WIDTH - 44,
-      height: 220,
-      maxFontSize: 62,
-      minFontSize: 38,
-      maxLines: 4,
-      fontWeight: '800',
-      lineHeightRatio: 1.18,
+      x: innerX,
+      y: 310,
+      width: innerW,
+      fontSize: 66,
+      fontWeight: 'bold',
+      lineHeightRatio: 1.25,
       color: '#ffffff'
     });
 
     drawTextBlock(ctx, slide.content, {
-      x: SAFE + 44,
-      y: 600,
-      width: CONTENT_WIDTH - 44,
-      height: 260,
-      maxFontSize: 38,
-      minFontSize: 24,
-      maxLines: 7,
-      fontWeight: '500',
-      lineHeightRatio: 1.45,
-      color: '#e2e8f0'
+      x: innerX,
+      y: 550,
+      width: innerW,
+      fontSize: 44,
+      fontWeight: 'bold',
+      lineHeightRatio: 1.5,
+      color: '#f8fafc'
     });
   } else {
     ctx.fillStyle = '#f59e0b';
-    ctx.font = `800 30px ${FONT_FAMILY}`;
+    ctx.font = `bold 38px ${ACTIVE_FONT}`;
     ctx.textAlign = 'left';
-    ctx.fillText('END NOTE', SAFE + 44, 245);
+    ctx.fillText('END NOTE', innerX, 210);
 
     drawTextBlock(ctx, slide.title, {
-      x: SAFE + 44,
-      y: 340,
-      width: CONTENT_WIDTH - 44,
-      height: 300,
-      maxFontSize: 66,
-      minFontSize: 38,
-      maxLines: 4,
-      fontWeight: '800',
-      lineHeightRatio: 1.18,
-      color: '#ffffff',
-      vertical: 'middle'
+      x: innerX,
+      y: 320,
+      width: innerW,
+      fontSize: 70,
+      fontWeight: 'bold',
+      lineHeightRatio: 1.3,
+      color: '#ffffff'
     });
 
     drawTextBlock(ctx, slide.subtitle, {
-      x: SAFE + 44,
+      x: innerX,
       y: 720,
-      width: CONTENT_WIDTH - 44,
-      height: 120,
-      maxFontSize: 34,
-      minFontSize: 22,
-      maxLines: 2,
-      fontWeight: '600',
+      width: innerW,
+      fontSize: 38,
+      fontWeight: 'bold',
       color: '#cbd5e1'
     });
   }
@@ -502,107 +370,88 @@ function drawEditorial(ctx, slide, index, total) {
 
 // 03 SPLIT
 function drawSplit(ctx, slide, index, total) {
-  const panelWidth = 360;
+  const panelWidth = 340;
   ctx.fillStyle = '#4f46e5';
   ctx.fillRect(0, 0, panelWidth, HEIGHT);
 
-  drawDecorations(ctx, index, total, true);
+  drawDecorations(ctx, index, total);
 
   ctx.fillStyle = '#ffffff';
-  ctx.font = `800 34px ${FONT_FAMILY}`;
+  ctx.font = `bold 38px ${ACTIVE_FONT}`;
   ctx.textAlign = 'left';
-  ctx.fillText(String(index + 1).padStart(2, '0'), SAFE, 160);
+  ctx.fillText(String(index + 1).padStart(2, '0'), SAFE, 150);
 
-  const rightX = 430;
+  const rightX = 390;
   const rightW = WIDTH - rightX - SAFE;
 
   if (slide.type === 'cover') {
     ctx.fillStyle = '#ffffff';
-    ctx.font = `800 30px ${FONT_FAMILY}`;
-    ctx.fillText('FEATURE', SAFE, 230);
+    ctx.font = `bold 34px ${ACTIVE_FONT}`;
+    ctx.fillText('FEATURE', SAFE, 220);
 
     drawTextBlock(ctx, slide.title, {
       x: rightX,
       y: 250,
       width: rightW,
-      height: 390,
-      maxFontSize: 68,
-      minFontSize: 38,
-      maxLines: 5,
-      fontWeight: '800',
-      lineHeightRatio: 1.18,
+      fontSize: 70,
+      fontWeight: 'bold',
+      lineHeightRatio: 1.25,
       color: '#ffffff'
     });
 
     drawTextBlock(ctx, slide.subtitle, {
       x: rightX,
-      y: 700,
+      y: 720,
       width: rightW,
-      height: 140,
-      maxFontSize: 34,
-      minFontSize: 22,
-      maxLines: 3,
-      fontWeight: '500',
+      fontSize: 36,
+      fontWeight: 'bold',
       color: '#e2e8f0'
     });
   } else if (slide.type === 'body') {
     ctx.fillStyle = '#ffffff';
-    ctx.font = `800 54px ${FONT_FAMILY}`;
-    ctx.fillText(slide.step || String(index).padStart(2, '0'), SAFE, 230);
+    ctx.font = `bold 68px ${ACTIVE_FONT}`;
+    ctx.fillText(slide.step || String(index).padStart(2, '0'), SAFE, 220);
 
     drawTextBlock(ctx, slide.title, {
       x: rightX,
-      y: 245,
+      y: 250,
       width: rightW,
-      height: 270,
-      maxFontSize: 60,
-      minFontSize: 34,
-      maxLines: 4,
-      fontWeight: '800',
-      lineHeightRatio: 1.18,
+      fontSize: 60,
+      fontWeight: 'bold',
+      lineHeightRatio: 1.25,
       color: '#ffffff'
     });
 
     drawTextBlock(ctx, slide.content, {
       x: rightX,
-      y: 590,
+      y: 530,
       width: rightW,
-      height: 300,
-      maxFontSize: 36,
-      minFontSize: 22,
-      maxLines: 8,
-      fontWeight: '500',
-      lineHeightRatio: 1.45,
-      color: '#e2e8f0'
+      fontSize: 40,
+      fontWeight: 'bold',
+      lineHeightRatio: 1.5,
+      color: '#f8fafc'
     });
   } else {
     ctx.fillStyle = '#ffffff';
-    ctx.font = `800 28px ${FONT_FAMILY}`;
-    ctx.fillText('SAVE', SAFE, 230);
+    ctx.font = `bold 34px ${ACTIVE_FONT}`;
+    ctx.fillText('SAVE', SAFE, 220);
 
     drawTextBlock(ctx, slide.title, {
       x: rightX,
-      y: 330,
+      y: 300,
       width: rightW,
-      height: 300,
-      maxFontSize: 62,
-      minFontSize: 36,
-      maxLines: 4,
-      fontWeight: '800',
-      lineHeightRatio: 1.18,
-      color: '#ffffff',
-      vertical: 'middle'
+      fontSize: 64,
+      fontWeight: 'bold',
+      lineHeightRatio: 1.3,
+      color: '#ffffff'
     });
 
     drawTextBlock(ctx, slide.subtitle, {
       x: rightX,
-      y: 700,
+      y: 720,
       width: rightW,
-      height: 130,
-      maxFontSize: 32,
-      minFontSize: 22,
-      maxLines: 2,
-      fontWeight: '600',
+      fontSize: 36,
+      fontWeight: 'bold',
       color: '#e2e8f0'
     });
   }
@@ -610,108 +459,33 @@ function drawSplit(ctx, slide, index, total) {
 
 // 04 CARD
 function drawCard(ctx, slide, index, total) {
-  drawDecorations(ctx, index, total, true);
+  drawDecorations(ctx, index, total);
 
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-  roundRect(ctx, SAFE, 150, CONTENT_WIDTH, 780, 36);
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.96)';
+  roundRect(ctx, SAFE, 140, CONTENT_WIDTH, 800, 36);
   ctx.fill();
 
-  const innerX = SAFE + 56;
-  const innerW = CONTENT_WIDTH - 112;
+  const innerX = SAFE + 50;
+  const innerW = CONTENT_WIDTH - 100;
 
   if (slide.type === 'cover') {
     ctx.fillStyle = '#f97316';
-    roundRect(ctx, innerX, 220, 190, 56, 28);
+    roundRect(ctx, innerX, 200, 180, 52, 26);
     ctx.fill();
 
     ctx.fillStyle = '#ffffff';
-    ctx.font = `800 26px ${FONT_FAMILY}`;
+    ctx.font = `bold 28px ${ACTIVE_FONT}`;
     ctx.textAlign = 'center';
-    ctx.fillText('TREND', innerX + 95, 236);
+    ctx.fillText('TREND', innerX + 90, 212);
 
     drawTextBlock(ctx, slide.title, {
       x: innerX,
-      y: 335,
+      y: 300,
       width: innerW,
-      height: 330,
-      maxFontSize: 68,
-      minFontSize: 40,
-      maxLines: 5,
-      fontWeight: '800',
-      lineHeightRatio: 1.18,
-      color: '#111827',
-      shadow: false
-    });
-
-    drawTextBlock(ctx, slide.subtitle, {
-      x: innerX,
-      y: 730,
-      width: innerW,
-      height: 130,
-      maxFontSize: 34,
-      minFontSize: 22,
-      maxLines: 3,
-      fontWeight: '500',
-      color: '#64748b',
-      shadow: false
-    });
-  } else if (slide.type === 'body') {
-    ctx.fillStyle = '#f97316';
-    ctx.font = `800 48px ${FONT_FAMILY}`;
-    ctx.textAlign = 'left';
-    ctx.fillText(slide.step || String(index).padStart(2, '0'), innerX, 225);
-
-    drawTextBlock(ctx, slide.title, {
-      x: innerX,
-      y: 330,
-      width: innerW,
-      height: 230,
-      maxFontSize: 58,
-      minFontSize: 36,
-      maxLines: 4,
-      fontWeight: '800',
-      lineHeightRatio: 1.18,
-      color: '#111827',
-      shadow: false
-    });
-
-    ctx.fillStyle = '#f1f5f9';
-    roundRect(ctx, innerX, 610, innerW, 230, 24);
-    ctx.fill();
-
-    drawTextBlock(ctx, slide.content, {
-      x: innerX + 28,
-      y: 640,
-      width: innerW - 56,
-      height: 170,
-      maxFontSize: 34,
-      minFontSize: 22,
-      maxLines: 6,
-      fontWeight: '500',
-      lineHeightRatio: 1.45,
-      color: '#334155',
-      vertical: 'middle',
-      shadow: false
-    });
-  } else {
-    ctx.fillStyle = '#f97316';
-    ctx.font = `800 28px ${FONT_FAMILY}`;
-    ctx.textAlign = 'center';
-    ctx.fillText('SAVE & SHARE', WIDTH / 2, 245);
-
-    drawTextBlock(ctx, slide.title, {
-      x: innerX,
-      y: 335,
-      width: innerW,
-      height: 280,
-      maxFontSize: 60,
-      minFontSize: 36,
-      maxLines: 4,
-      fontWeight: '800',
-      lineHeightRatio: 1.18,
-      color: '#111827',
-      align: 'center',
-      vertical: 'middle',
+      fontSize: 72,
+      fontWeight: 'bold',
+      lineHeightRatio: 1.25,
+      color: '#0f172a',
       shadow: false
     });
 
@@ -719,14 +493,68 @@ function drawCard(ctx, slide, index, total) {
       x: innerX,
       y: 720,
       width: innerW,
-      height: 120,
-      maxFontSize: 32,
-      minFontSize: 22,
-      maxLines: 2,
-      fontWeight: '600',
-      color: '#64748b',
+      fontSize: 38,
+      fontWeight: 'bold',
+      color: '#475569',
+      shadow: false
+    });
+  } else if (slide.type === 'body') {
+    ctx.fillStyle = '#f97316';
+    ctx.font = `bold 56px ${ACTIVE_FONT}`;
+    ctx.textAlign = 'left';
+    ctx.fillText(slide.step || String(index).padStart(2, '0'), innerX, 190);
+
+    drawTextBlock(ctx, slide.title, {
+      x: innerX,
+      y: 280,
+      width: innerW,
+      fontSize: 62,
+      fontWeight: 'bold',
+      lineHeightRatio: 1.25,
+      color: '#0f172a',
+      shadow: false
+    });
+
+    ctx.fillStyle = '#f1f5f9';
+    roundRect(ctx, innerX, 500, innerW, 370, 24);
+    ctx.fill();
+
+    drawTextBlock(ctx, slide.content, {
+      x: innerX + 30,
+      y: 540,
+      width: innerW - 60,
+      fontSize: 42,
+      fontWeight: 'bold',
+      lineHeightRatio: 1.5,
+      color: '#1e293b',
+      shadow: false
+    });
+  } else {
+    ctx.fillStyle = '#f97316';
+    ctx.font = `bold 34px ${ACTIVE_FONT}`;
+    ctx.textAlign = 'center';
+    ctx.fillText('SAVE & SHARE', WIDTH / 2, 210);
+
+    drawTextBlock(ctx, slide.title, {
+      x: innerX,
+      y: 310,
+      width: innerW,
+      fontSize: 66,
+      fontWeight: 'bold',
+      lineHeightRatio: 1.3,
+      color: '#0f172a',
       align: 'center',
-      vertical: 'middle',
+      shadow: false
+    });
+
+    drawTextBlock(ctx, slide.subtitle, {
+      x: innerX,
+      y: 720,
+      width: innerW,
+      fontSize: 36,
+      fontWeight: 'bold',
+      color: '#475569',
+      align: 'center',
       shadow: false
     });
   }
@@ -734,151 +562,118 @@ function drawCard(ctx, slide, index, total) {
 
 // 05 MINIMAL
 function drawMinimal(ctx, slide, index, total) {
-  drawDecorations(ctx, index, total, true);
-
+  drawDecorations(ctx, index, total);
   ctx.fillStyle = '#38bdf8';
-  ctx.fillRect(SAFE, 190, 80, 6);
+  ctx.fillRect(SAFE, 150, 100, 8);
 
   if (slide.type === 'cover') {
     ctx.fillStyle = '#38bdf8';
-    ctx.font = `600 28px ${FONT_FAMILY}`;
+    ctx.font = `bold 36px ${ACTIVE_FONT}`;
     ctx.textAlign = 'left';
-    ctx.fillText('INSIGHT', SAFE, 235);
+    ctx.fillText('INSIGHT', SAFE, 190);
 
     drawTextBlock(ctx, slide.title, {
       x: SAFE,
-      y: 330,
+      y: 280,
       width: CONTENT_WIDTH,
-      height: 360,
-      maxFontSize: 74,
-      minFontSize: 42,
-      maxLines: 5,
-      fontWeight: '800',
-      lineHeightRatio: 1.18,
+      fontSize: 78,
+      fontWeight: 'bold',
+      lineHeightRatio: 1.25,
       color: '#ffffff'
     });
 
     drawTextBlock(ctx, slide.subtitle, {
       x: SAFE,
-      y: 760,
+      y: 720,
       width: CONTENT_WIDTH,
-      height: 110,
-      maxFontSize: 32,
-      minFontSize: 22,
-      maxLines: 2,
-      fontWeight: '500',
+      fontSize: 38,
+      fontWeight: 'bold',
       color: '#cbd5e1'
     });
   } else if (slide.type === 'body') {
     ctx.fillStyle = '#38bdf8';
-    ctx.font = `600 28px ${FONT_FAMILY}`;
+    ctx.font = `bold 40px ${ACTIVE_FONT}`;
     ctx.textAlign = 'left';
-    ctx.fillText(`POINT ${slide.step || String(index).padStart(2, '0')}`, SAFE, 250);
+    ctx.fillText(`POINT ${slide.step || String(index).padStart(2, '0')}`, SAFE, 190);
 
     drawTextBlock(ctx, slide.title, {
       x: SAFE,
-      y: 350,
+      y: 280,
       width: CONTENT_WIDTH,
-      height: 240,
-      maxFontSize: 62,
-      minFontSize: 36,
-      maxLines: 4,
-      fontWeight: '800',
-      lineHeightRatio: 1.18,
+      fontSize: 66,
+      fontWeight: 'bold',
+      lineHeightRatio: 1.25,
       color: '#ffffff'
     });
 
     drawTextBlock(ctx, slide.content, {
       x: SAFE,
-      y: 650,
+      y: 540,
       width: CONTENT_WIDTH,
-      height: 220,
-      maxFontSize: 36,
-      minFontSize: 24,
-      maxLines: 6,
-      fontWeight: '500',
-      lineHeightRatio: 1.45,
+      fontSize: 44,
+      fontWeight: 'bold',
+      lineHeightRatio: 1.5,
       color: '#e2e8f0'
     });
   } else {
     ctx.fillStyle = '#38bdf8';
-    ctx.font = `800 28px ${FONT_FAMILY}`;
+    ctx.font = `bold 38px ${ACTIVE_FONT}`;
     ctx.textAlign = 'left';
-    ctx.fillText('BOOKMARK', SAFE, 245);
+    ctx.fillText('BOOKMARK', SAFE, 210);
 
     drawTextBlock(ctx, slide.title, {
       x: SAFE,
-      y: 350,
+      y: 320,
       width: CONTENT_WIDTH,
-      height: 300,
-      maxFontSize: 66,
-      minFontSize: 38,
-      maxLines: 4,
-      fontWeight: '800',
-      lineHeightRatio: 1.18,
-      color: '#ffffff',
-      vertical: 'middle'
+      fontSize: 70,
+      fontWeight: 'bold',
+      lineHeightRatio: 1.3,
+      color: '#ffffff'
     });
 
     drawTextBlock(ctx, slide.subtitle, {
       x: SAFE,
-      y: 740,
+      y: 720,
       width: CONTENT_WIDTH,
-      height: 120,
-      maxFontSize: 32,
-      minFontSize: 22,
-      maxLines: 2,
-      fontWeight: '500',
+      fontSize: 38,
+      fontWeight: 'bold',
       color: '#cbd5e1'
     });
   }
 }
 
-// 개별 슬라이드 렌더링
 async function renderSlide(slide = {}, index, totalSlides, options = {}) {
   const canvas = createCanvas(WIDTH, HEIGHT);
   const ctx = canvas.getContext('2d');
   const layout = LAYOUTS[options.layout] ? options.layout : 'modern';
 
   ctx.imageSmoothingEnabled = true;
-
   await drawBackground(ctx, layout, index, slide.imageUrl);
 
-  if (layout === 'modern') {
-    drawModern(ctx, slide, index, totalSlides);
-  } else if (layout === 'editorial') {
-    drawEditorial(ctx, slide, index, totalSlides);
-  } else if (layout === 'split') {
-    drawSplit(ctx, slide, index, totalSlides);
-  } else if (layout === 'card') {
-    drawCard(ctx, slide, index, totalSlides);
-  } else {
-    drawMinimal(ctx, slide, index, totalSlides);
-  }
+  if (layout === 'modern') drawModern(ctx, slide, index, totalSlides);
+  else if (layout === 'editorial') drawEditorial(ctx, slide, index, totalSlides);
+  else if (layout === 'split') drawSplit(ctx, slide, index, totalSlides);
+  else if (layout === 'card') drawCard(ctx, slide, index, totalSlides);
+  else drawMinimal(ctx, slide, index, totalSlides);
 
   const outputDir = path.join(__dirname, 'public', 'generated');
   if (!fs.existsSync(outputDir)) {
     fs.mkdirSync(outputDir, { recursive: true });
   }
 
-  const fileName = `slide_${Date.now()}_${index + 1}.png`;
+  const fileName = `slide_${Date.now()}_${index + 1}_${Math.random().toString(36).slice(2, 6)}.png`;
   const filePath = path.join(outputDir, fileName);
 
   fs.writeFileSync(filePath, canvas.toBuffer('image/png'));
   return `/generated/${fileName}`;
 }
 
-// 전체 카드뉴스 생성
 async function generateCarouselImages(slides = [], options = {}) {
   const safeSlides = Array.isArray(slides) ? slides : [];
-  const imageUrls = [];
-
-  for (let i = 0; i < safeSlides.length; i++) {
-    const url = await renderSlide(safeSlides[i], i, safeSlides.length, options);
-    imageUrls.push(url);
-  }
-
-  return imageUrls;
+  const renderPromises = safeSlides.map((slide, i) =>
+    renderSlide(slide, i, safeSlides.length, options)
+  );
+  return await Promise.all(renderPromises);
 }
 
 module.exports = {

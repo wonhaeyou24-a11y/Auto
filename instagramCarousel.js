@@ -1,11 +1,22 @@
 const axios = require('axios');
 
-/**
- * 1. 단일 이미지 인스타그램 피드 발행
- */
+async function fetchInstagramPermalink(postId, accessToken) {
+  try {
+    const res = await axios.get(`https://graph.facebook.com/v19.0/${postId}`, {
+      params: {
+        fields: 'permalink',
+        access_token: accessToken,
+      },
+      timeout: 5000,
+    });
+    return res.data.permalink || `https://www.instagram.com/p/${postId}/`;
+  } catch (e) {
+    return `https://www.instagram.com/p/${postId}/`;
+  }
+}
+
 async function publishInstagramSingle(imageUrl, caption, igUserId, accessToken) {
   try {
-    // 1. 단일 미디어 컨테이너 생성
     const containerRes = await axios.post(
       `https://graph.facebook.com/v19.0/${igUserId}/media`,
       null,
@@ -20,7 +31,6 @@ async function publishInstagramSingle(imageUrl, caption, igUserId, accessToken) 
 
     const creationId = containerRes.data.id;
 
-    // 2. 최종 피드 게시
     const publishRes = await axios.post(
       `https://graph.facebook.com/v19.0/${igUserId}/media_publish`,
       null,
@@ -33,25 +43,23 @@ async function publishInstagramSingle(imageUrl, caption, igUserId, accessToken) 
     );
 
     const postId = publishRes.data.id;
+    const postUrl = await fetchInstagramPermalink(postId, accessToken);
+
     return {
       success: true,
       postId: postId,
-      postUrl: `https://www.instagram.com/p/${postId}/`
+      postUrl: postUrl
     };
   } catch (err) {
-    console.error('인스타그램 단일 이미지 업로드 에러:', err.response?.data || err.message);
+    console.error('인스타그램 단일 업로드 에러:', err.response?.data || err.message);
     throw new Error(err.response?.data?.error?.message || err.message);
   }
 }
 
-/**
- * 2. 캐러셀(카드뉴스 여러 장) 인스타그램 피드 발행
- */
 async function publishInstagramCarousel(imageUrls, caption, igUserId, accessToken) {
   try {
     const childContainerIds = [];
 
-    // 1. 각 슬라이드별 자식 미디어 컨테이너 생성
     for (const url of imageUrls) {
       const res = await axios.post(
         `https://graph.facebook.com/v19.0/${igUserId}/media`,
@@ -67,7 +75,6 @@ async function publishInstagramCarousel(imageUrls, caption, igUserId, accessToke
       childContainerIds.push(res.data.id);
     }
 
-    // 2. 전체를 묶는 캐러셀 컨테이너 생성
     const carouselRes = await axios.post(
       `https://graph.facebook.com/v19.0/${igUserId}/media`,
       null,
@@ -83,7 +90,6 @@ async function publishInstagramCarousel(imageUrls, caption, igUserId, accessToke
 
     const creationId = carouselRes.data.id;
 
-    // 3. 최종 인스타그램 게시
     const publishRes = await axios.post(
       `https://graph.facebook.com/v19.0/${igUserId}/media_publish`,
       null,
@@ -96,10 +102,12 @@ async function publishInstagramCarousel(imageUrls, caption, igUserId, accessToke
     );
 
     const postId = publishRes.data.id;
+    const postUrl = await fetchInstagramPermalink(postId, accessToken);
+
     return {
       success: true,
       postId: postId,
-      postUrl: `https://www.instagram.com/p/${postId}/`
+      postUrl: postUrl
     };
   } catch (err) {
     console.error('인스타그램 캐러셀 업로드 에러:', err.response?.data || err.message);
