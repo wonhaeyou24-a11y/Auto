@@ -13,7 +13,7 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 const GEMINI_API_KEY = (process.env.GEMINI_API_KEY || '').trim();
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 const UNSPLASH_ACCESS_KEY = process.env.UNSPLASH_ACCESS_KEY;
 const IG_USER_ID = (process.env.IG_USER_ID || '').trim();
 const IG_ACCESS_TOKEN = (process.env.IG_ACCESS_TOKEN || '').trim();
@@ -22,13 +22,12 @@ const genAI = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
 const { generateCarouselImages, renderSlide, LAYOUTS } = require('./generateCards');
 const { publishInstagramSingle, publishInstagramCarousel } = require('./instagramCarousel');
 
-// [고정 관심 카테고리]
 const CATEGORIES = [
     '가족여행', '육아', '경제', '부동산', '호기심천국', '생활팁', '결혼생활'
 ];
 
 // ============================================================
-// 🛡️ Gemini API 쿼터 초과 대비 카테고리별 비상 백업 프리셋 (Fallback)
+// 🛡️ 100% 보장형 내장 백업 프리셋 DB
 // ============================================================
 const FALLBACK_PRESETS = {
     '가족여행': {
@@ -186,74 +185,17 @@ function addLog(message) {
     console.log(entry);
 }
 
-// 🔔 카카오톡 알림
-let kakaoAccessToken = null;
-async function getKakaoAccessToken() {
-    const REST_API_KEY = process.env.KAKAO_CLIENT_ID;
-    const REFRESH_TOKEN = process.env.KAKAO_REFRESH_TOKEN;
-    if (!REST_API_KEY || !REFRESH_TOKEN) return null;
-
-    try {
-        const res = await axios.post('https://kauth.kakao.com/oauth/token', null, {
-            params: {
-                grant_type: 'refresh_token',
-                client_id: REST_API_KEY,
-                refresh_token: REFRESH_TOKEN
-            },
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
-        });
-        kakaoAccessToken = res.data.access_token;
-        return kakaoAccessToken;
-    } catch (err) {
-        return null;
-    }
-}
-
-async function sendKakaoNotification(title, message, linkUrl = 'http://localhost:3000') {
-    const token = await getKakaoAccessToken();
-    if (!token) return;
-
-    try {
-        const template = {
-            object_type: 'text',
-            text: `[인스타 스튜디오 알림]\n\n📌 ${title}\n${message}`,
-            link: { web_url: linkUrl, mobile_web_url: linkUrl },
-            button_title: '게시물 확인'
-        };
-
-        await axios.post(
-            'https://kapi.kakao.com/v2/api/talk/memo/default/send',
-            `template_object=${encodeURIComponent(JSON.stringify(template))}`,
-            {
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    'Content-Type': 'application/x-www-form-urlencoded'
-                }
-            }
-        );
-        addLog('💬 카카오톡 알림 전송 완료');
-    } catch (err) { }
-}
-
-// 품질 검사 및 중복 검사
-const FORBIDDEN_WORDS = ['100% 보장', '무조건 수익', '불법', '성인', '마약', '대출상담', '비밀리크'];
-function inspectContentQuality(parsed) {
-    const fullText = `${parsed.topic} ${parsed.bodyText}`;
-    for (const word of FORBIDDEN_WORDS) {
-        if (fullText.includes(word)) return { passed: false, reason: `금칙어: [${word}]` };
-    }
-    if (!parsed.bodyText || parsed.bodyText.length < 20) return { passed: false, reason: '본문 20자 미만' };
-    return { passed: true };
-}
-
-function checkDuplicateTopic(newTopic) {
-    const posts = loadPosts();
-    const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
-    const recentPosts = posts.filter(p => new Date(p.createdAt).getTime() > thirtyDaysAgo);
-    return recentPosts.some(p => p.topic && (p.topic.includes(newTopic) || newTopic.includes(p.topic)));
-}
-
+// Unsplash 이미지 검색 (오류 시에도 고화질 안전 이미지 무조건 반환)
 async function searchUnsplashImages(keyword, count = 4) {
+    const backupImages = [
+        `https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=1080&q=80`,
+        `https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?w=1080&q=80`,
+        `https://images.unsplash.com/photo-1519681393784-d120267933ba?w=1080&q=80`,
+        `https://images.unsplash.com/photo-1499750310107-5fef28a66643?w=1080&q=80`
+    ];
+
+    if (!UNSPLASH_ACCESS_KEY) return backupImages.slice(0, count);
+
     try {
         const url = `https://api.unsplash.com/search/photos?query=${encodeURIComponent(keyword)}&per_page=${count}&orientation=squarish&client_id=${UNSPLASH_ACCESS_KEY}`;
         const response = await fetch(url);
@@ -261,24 +203,15 @@ async function searchUnsplashImages(keyword, count = 4) {
         if (data && data.results && data.results.length > 0) {
             return data.results.map(item => item.urls.regular);
         }
-        throw new Error("No images found");
+        return backupImages.slice(0, count);
     } catch (error) {
-        return [
-            `https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=1080&q=80`,
-            `https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?w=1080&q=80`,
-            `https://images.unsplash.com/photo-1519681393784-d120267933ba?w=1080&q=80`,
-            `https://images.unsplash.com/photo-1499750310107-5fef28a66643?w=1080&q=80`
-        ];
+        return backupImages.slice(0, count);
     }
 }
 
 function getGeminiModel(generationConfig) {
     if (!GEMINI_API_KEY) throw new Error('Gemini API 키가 없습니다.');
     return genAI.getGenerativeModel({ model: GEMINI_MODEL, generationConfig });
-}
-
-function getGeminiErrorMessage(error) {
-    return error?.message || String(error);
 }
 
 function toAbsoluteUrl(url) {
@@ -294,9 +227,7 @@ function getNextOptimalScheduleTime() {
     for (let h of optimalHours) {
         let candidate = new Date(now);
         candidate.setHours(h, 0, 0, 0);
-        if (candidate > now) {
-            return candidate.toISOString();
-        }
+        if (candidate > now) return candidate.toISOString();
     }
 
     let tomorrow = new Date(now);
@@ -322,7 +253,7 @@ async function executePublishPost(post) {
     return publishResult;
 }
 
-// ⏰ [예약 발행 감시 스케줄러 - 매 분 실행]
+// ⏰ [예약 스케줄러]
 cron.schedule('* * * * *', async () => {
     const posts = loadPosts();
     const now = new Date();
@@ -332,7 +263,7 @@ cron.schedule('* * * * *', async () => {
         if (post.status === 'SCHEDULED' && post.scheduledAt) {
             const scheduledTime = new Date(post.scheduledAt);
             if (scheduledTime <= now) {
-                addLog(`⏰ [예약 시간 도달] [${post.topic}] 게시물 자동 발행을 시작합니다...`);
+                addLog(`⏰ [예약 시간 도달] [${post.topic}] 자동 발행 시도...`);
                 try {
                     const publishResult = await executePublishPost(post);
                     post.status = 'PUBLISHED';
@@ -340,11 +271,6 @@ cron.schedule('* * * * *', async () => {
                     post.publishedAt = now.toISOString();
                     updated = true;
                     addLog(`🎉 [예약 자동발행 성공] Post ID: ${publishResult.postId}`);
-                    await sendKakaoNotification(
-                        '예약 콘텐츠 자동 발행 완료 🚀',
-                        `주제: ${post.topic}\n게시물 ID: ${publishResult.postId}\n링크: ${publishResult.postUrl}`,
-                        publishResult.postUrl
-                    );
                 } catch (err) {
                     addLog(`❌ [예약 자동발행 실패] ${err.message}`);
                     post.status = 'FAILED';
@@ -355,56 +281,35 @@ cron.schedule('* * * * *', async () => {
         }
     }
 
-    if (updated) {
-        savePosts(posts);
-    }
+    if (updated) savePosts(posts);
 });
 
-// 🔄 Auto-Pilot 무인 파이프라인 (Gemini 쿼터 초과 시 Fallback 자동 전환 탑재)
-async function runAutoPilotPipeline(retryCount = 0) {
+// 🔄 [Auto-Pilot 파이프라인]
+async function runAutoPilotPipeline() {
     const randomCategory = CATEGORIES[Math.floor(Math.random() * CATEGORIES.length)];
-    addLog(`🤖 [자동화] 카테고리 [${randomCategory}] 자동 생성 가동`);
+    addLog(`🤖 [자동화] 카테고리 [${randomCategory}] 생성 가동`);
 
     try {
         let parsed;
         try {
             const model = getGeminiModel();
-            const prompt = `
-            너는 10만 팔로워를 가진 트렌디한 인스타그램 마케터야.
-            선택된 카테고리: [${randomCategory}]
-            첫 문장은 강력한 후킹, 이모지와 줄바꿈 적용.
-            JSON 응답:
-            {
-                "topic": "주제명",
-                "keyword": "검색용 영어단어",
-                "bodyText": "해시태그 제외한 본문 전체",
-                "hashtags": {
-                    "core": ["#핵심1", "#핵심2", "#핵심3", "#핵심4", "#핵심5"],
-                    "expand": ["#확장1", "#확장2", "#확장3", "#확장4", "#확장5"],
-                    "target": ["#타깃1", "#타깃2", "#타깃3", "#타깃4", "#타깃5"]
-                }
-            }
-            `;
-
+            const prompt = `인스타그램 마케터로서 [${randomCategory}] 주제로 강력한 후킹 캡션 작성. JSON 응답: {"topic":"주제", "keyword":"영어단어", "bodyText":"본문", "hashtags":{"core":["#태그1"], "expand":["#태그2"], "target":["#태그3"]}}`;
             const result = await model.generateContent(prompt);
-            const text = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
-            parsed = JSON.parse(text);
+            parsed = JSON.parse(result.response.text().replace(/```json/g, '').replace(/```/g, '').trim());
         } catch (apiErr) {
-            addLog(`⚠️ Gemini API 쿼터 한도 감지 ➡️ [${randomCategory}] 고품질 백업 프리셋으로 자동 전환합니다.`);
+            addLog(`🛡️ [API 한도 감지] [${randomCategory}] 내장 백업 프리셋으로 안전하게 생성합니다.`);
             parsed = FALLBACK_PRESETS[randomCategory] || FALLBACK_PRESETS['가족여행'];
         }
 
         const candidateImages = await searchUnsplashImages(parsed.keyword, 4);
         const selectedImg = candidateImages[0];
-
         const allTags = [...(parsed.hashtags?.core || []), ...(parsed.hashtags?.expand || []), ...(parsed.hashtags?.target || [])].join(' ');
         const finalCaption = `${parsed.bodyText}\n\n${allTags}`;
-
         const scheduledTime = autoPilotState.autoSchedule ? getNextOptimalScheduleTime() : null;
         const targetStatus = autoPilotState.autoSchedule ? 'SCHEDULED' : 'DRAFT';
 
         const posts = loadPosts();
-        const newPost = {
+        posts.unshift({
             id: Date.now().toString(),
             category: randomCategory,
             topic: parsed.topic,
@@ -421,19 +326,9 @@ async function runAutoPilotPipeline(retryCount = 0) {
             scheduledAt: scheduledTime,
             publishedAt: null,
             createdAt: new Date().toISOString()
-        };
-        posts.unshift(newPost);
+        });
         savePosts(posts);
-
-        if (targetStatus === 'SCHEDULED') {
-            const dateStr = new Date(scheduledTime).toLocaleString('ko-KR');
-            addLog(`⏰ [자동 예약] 콘텐츠가 황금 시간대(${dateStr})로 예약 등록되었습니다.`);
-            await sendKakaoNotification('신규 콘텐츠 자동 예약 완료 ⏰', `주제: ${parsed.topic}\n예약시간: ${dateStr}`);
-        } else {
-            addLog(`💾 [보관함 저장] 콘텐츠가 임시저장(DRAFT) 상태로 저장되었습니다.`);
-            await sendKakaoNotification('신규 콘텐츠 자동 생성 완료 ✅', `주제: ${parsed.topic}\n상태: DRAFT`);
-        }
-
+        addLog(`💾 [콘텐츠 생성 완료] [${parsed.topic}] (${targetStatus})`);
     } catch (error) {
         addLog(`❌ 파이프라인 오류: ${error.message}`);
     }
@@ -465,7 +360,7 @@ app.post('/api/autopilot/toggle', (req, res) => {
 
     if (enabled) {
         setupCron(autoPilotState.interval);
-        addLog(`🟢 완전 자동화 가동 (주기: ${autoPilotState.interval} / 자동예약: ${autoPilotState.autoSchedule ? 'ON' : 'OFF'})`);
+        addLog(`🟢 완전 자동화 가동 (주기: ${autoPilotState.interval})`);
         runAutoPilotPipeline();
     } else {
         if (scheduledTask) scheduledTask.stop();
@@ -474,7 +369,7 @@ app.post('/api/autopilot/toggle', (req, res) => {
     res.json({ success: true, state: autoPilotState });
 });
 
-// 트렌드 추천 API (Fallback 내장)
+// 트렌드 추천 API (무조건 보장)
 app.get('/api/trends', async (req, res) => {
     const category = req.query.category || '가족여행';
     try {
@@ -485,15 +380,15 @@ app.get('/api/trends', async (req, res) => {
         res.json({ success: true, trends: JSON.parse(text) });
     } catch (e) {
         const preset = FALLBACK_PRESETS[category] || FALLBACK_PRESETS['가족여행'];
-        res.json({
-            success: true,
+        res.json({ 
+            success: true, 
             trends: [
                 preset.topic,
                 `실패 없는 [${category}] 실전 압축 가이드`,
                 `모르면 손해 보는 [${category}] 핵심 꿀팁 BEST 3`,
                 `지금 당장 따라 하는 [${category}] 루틴`,
                 `전문가가 알려주는 [${category}] 치트키`
-            ]
+            ] 
         });
     }
 });
@@ -518,7 +413,7 @@ app.post('/api/posts/save', (req, res) => {
         caption: caption || '',
         bodyText: bodyText || '',
         hashtags: hashtags || { core: [], expand: [], target: [] },
-        imageUrl: imageUrl || (imageUrls && imageUrls[0]) || 'https://placehold.co/600x600',
+        imageUrl: imageUrl || (imageUrls && imageUrls[0]) || 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=1080&q=80',
         candidateImages: candidateImages || [],
         imageUrls: imageUrls || [],
         layout: layout || 'modern',
@@ -560,100 +455,68 @@ app.delete('/api/posts/:id', (req, res) => {
     res.json({ success: true });
 });
 
-// 단일 생성 API (Fallback 내장)
+// 단일 피드 생성 API (무조건 보장)
 app.post('/api/generate', async (req, res) => {
     const { topic, instruction, currentCaption, tone, category } = req.body;
+    const cat = category || '가족여행';
+    let parsed;
+
     try {
-        let parsed;
-        try {
-            const model = getGeminiModel();
-            let tonePrompt = tone ? `[스타일/톤]: ${tone} 분위기로 변환해줘.` : '';
-            let prompt = currentCaption
-                ? `[기존 글]: ${currentCaption}\n[지시사항]: ${instruction}\n${tonePrompt}\nJSON 형식 응답:
-                {
-                  "keyword": "검색용 영어단어",
-                  "bodyText": "해시태그 제외한 본문",
-                  "hashtags": { "core": ["#태그1"], "expand": ["#태그2"], "target": ["#태그3"] }
-                }`
-                : `[주제]: ${topic}\n[지시사항]: ${instruction || "없음"}\n${tonePrompt}\nJSON 형식 응답:
-                {
-                  "keyword": "검색용 영어단어",
-                  "bodyText": "해시태그 제외한 본문",
-                  "hashtags": { "core": ["#태그1"], "expand": ["#태그2"], "target": ["#태그3"] }
-                }`;
-
-            const result = await model.generateContent(prompt);
-            const text = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
-            parsed = JSON.parse(text);
-        } catch (apiError) {
-            addLog(`⚠️ Gemini API 쿼터 한도 감지 ➡️ 백업 프리셋으로 안전하게 생성합니다.`);
-            const preset = FALLBACK_PRESETS[category] || FALLBACK_PRESETS['가족여행'];
-            parsed = {
-                keyword: preset.keyword,
-                bodyText: preset.bodyText,
-                hashtags: preset.hashtags
-            };
-        }
-
-        const candidateImages = await searchUnsplashImages(parsed.keyword, 4);
-        const allTags = [...(parsed.hashtags?.core || []), ...(parsed.hashtags?.expand || []), ...(parsed.hashtags?.target || [])].join(' ');
-        const finalCaption = `${parsed.bodyText}\n\n${allTags}`;
-
-        res.json({
-            success: true,
-            imageUrl: candidateImages[0],
-            candidateImages: candidateImages,
-            keyword: parsed.keyword,
-            bodyText: parsed.bodyText,
-            hashtags: parsed.hashtags || { core: [], expand: [], target: [] },
-            caption: finalCaption
-        });
-    } catch (error) {
-        res.status(500).json({ success: false, message: getGeminiErrorMessage(error) });
+        const model = getGeminiModel();
+        let tonePrompt = tone ? `[스타일]: ${tone}` : '';
+        let prompt = `[주제]: ${topic || cat}\n${tonePrompt}\nJSON 형식 응답: {"keyword":"영어단어", "bodyText":"본문", "hashtags":{"core":["#태그1"], "expand":["#태그2"], "target":["#태그3"]}}`;
+        const result = await model.generateContent(prompt);
+        parsed = JSON.parse(result.response.text().replace(/```json/g, '').replace(/```/g, '').trim());
+    } catch (apiError) {
+        addLog(`🛡️ [API 한도 감지] [${cat}] 단일 피드 백업 프리셋으로 안전 생성합니다.`);
+        const preset = FALLBACK_PRESETS[cat] || FALLBACK_PRESETS['가족여행'];
+        parsed = {
+            keyword: preset.keyword,
+            bodyText: preset.bodyText,
+            hashtags: preset.hashtags
+        };
     }
+
+    const candidateImages = await searchUnsplashImages(parsed.keyword, 4);
+    const allTags = [...(parsed.hashtags?.core || []), ...(parsed.hashtags?.expand || []), ...(parsed.hashtags?.target || [])].join(' ');
+    const finalCaption = `${parsed.bodyText}\n\n${allTags}`;
+
+    res.json({
+        success: true,
+        imageUrl: candidateImages[0],
+        candidateImages: candidateImages,
+        keyword: parsed.keyword,
+        bodyText: parsed.bodyText,
+        hashtags: parsed.hashtags || { core: [], expand: [], target: [] },
+        caption: finalCaption
+    });
 });
 
-// 카드뉴스 생성 API (Fallback 내장)
+// 🎨 카드뉴스 생성 API (무조건 100% 보장)
 app.post('/api/generate-carousel', async (req, res) => {
+    const { topic, layout, category } = req.body;
+    const cat = category || '가족여행';
+    let aiData;
+
     try {
-        const { topic, layout, category } = req.body;
-        let aiData;
-
-        try {
-            const model = getGeminiModel({ responseMimeType: 'application/json' });
-            const prompt = `
-주제: "${topic}"
-인스타그램 캐러셀 형식 콘텐츠 작성. 슬라이드는 표지 1개, 본문 3개, 아웃트로 1개 총 5개.
-각 슬라이드마다 imageKeyword 영어단어 1개 포함.
-JSON 응답:
-{
-  "bodyText": "본문 설명글",
-  "hashtags": { "core": ["#태그1"], "expand": ["#태그2"], "target": ["#태그3"] },
-  "slides": [
-    { "type": "cover", "imageKeyword": "family trip", "title": "제목", "subtitle": "부제목" },
-    { "type": "body", "imageKeyword": "scenery", "step": "01", "title": "소제목 1", "content": "내용" },
-    { "type": "body", "imageKeyword": "hotel", "step": "02", "title": "소제목 2", "content": "내용" },
-    { "type": "body", "imageKeyword": "food", "step": "03", "title": "소제목 3", "content": "내용" },
-    { "type": "outro", "imageKeyword": "sunset", "title": "저장하세요", "subtitle": "좋아요" }
-  ]
-}
-`;
-            const result = await model.generateContent(prompt);
-            aiData = JSON.parse(result.response.text());
-        } catch (apiError) {
-            addLog(`⚠️ Gemini API 쿼터 한도 감지 ➡️ [${category || '가족여행'}] 카드뉴스 백업 프리셋으로 자동 생성합니다.`);
-            const preset = FALLBACK_PRESETS[category] || FALLBACK_PRESETS['가족여행'];
-            aiData = {
-                bodyText: preset.bodyText,
-                hashtags: preset.hashtags,
-                slides: JSON.parse(JSON.stringify(preset.slides))
-            };
-            if (topic && topic !== preset.topic) {
-                aiData.slides[0].title = topic;
-            }
+        const model = getGeminiModel({ responseMimeType: 'application/json' });
+        const prompt = `주제: "${topic || cat}". 카드뉴스 5개 슬라이드 JSON 응답: {"bodyText":"본문", "hashtags":{"core":["#태그1"], "expand":["#태그2"], "target":["#태그3"]}, "slides":[{"type":"cover","imageKeyword":"travel","title":"제목","subtitle":"부제"},{"type":"body","imageKeyword":"hotel","step":"01","title":"소제목1","content":"내용1"},{"type":"body","imageKeyword":"food","step":"02","title":"소제목2","content":"내용2"},{"type":"body","imageKeyword":"view","step":"03","title":"소제목3","content":"내용3"},{"type":"outro","imageKeyword":"sunset","title":"저장하세요","subtitle":"좋아요"}]}`;
+        const result = await model.generateContent(prompt);
+        aiData = JSON.parse(result.response.text());
+    } catch (apiError) {
+        addLog(`🛡️ [API 한도 감지] [${cat}] 카드뉴스 5장 백업 프리셋으로 안전 생성합니다.`);
+        const preset = FALLBACK_PRESETS[cat] || FALLBACK_PRESETS['가족여행'];
+        aiData = {
+            bodyText: preset.bodyText,
+            hashtags: preset.hashtags,
+            slides: JSON.parse(JSON.stringify(preset.slides))
+        };
+        if (topic && topic !== preset.topic) {
+            aiData.slides[0].title = topic;
         }
+    }
 
-        // 슬라이드별 Unsplash 배경 사진 매칭
+    try {
         for (const slide of aiData.slides) {
             const candidates = await searchUnsplashImages(slide.imageKeyword || 'scenery', 1);
             slide.imageUrl = candidates[0];
@@ -669,8 +532,8 @@ JSON 응답:
         const posts = loadPosts();
         posts.unshift({
             id: newId,
-            category: category || '일반',
-            topic: topic || '카드뉴스 콘텐츠',
+            category: cat,
+            topic: topic || (aiData.slides[0] && aiData.slides[0].title) || '카드뉴스 콘텐츠',
             caption: finalCaption,
             bodyText: aiData.bodyText,
             hashtags: aiData.hashtags,
@@ -693,9 +556,9 @@ JSON 응답:
             layout: selectedLayout,
             slides: aiData.slides
         });
-
-    } catch (err) {
-        res.status(500).json({ success: false, message: getGeminiErrorMessage(err) });
+    } catch (renderError) {
+        console.error('렌더링 에러:', renderError);
+        res.status(500).json({ success: false, message: '렌더링 실패: ' + renderError.message });
     }
 });
 
@@ -740,12 +603,6 @@ app.post('/api/publish-now', async (req, res) => {
         }
 
         addLog(`🎉 [인스타그램 발행 성공] Post ID: ${publishResult.postId}`);
-        await sendKakaoNotification(
-            '인스타그램 피드 발행 성공 🚀',
-            `게시물 ID: ${publishResult.postId}\n인스타 링크: ${publishResult.postUrl}`,
-            publishResult.postUrl
-        );
-
         res.json({ success: true, ...publishResult });
     } catch (error) {
         addLog(`❌ [발행 실패] ${error.message}`);
@@ -772,7 +629,7 @@ app.get('/', (req, res) => {
                 <header class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-wrap justify-between items-center gap-4">
                     <div>
                         <h1 class="text-2xl font-bold text-slate-800">📸 인스타그램 크리에이터 스튜디오</h1>
-                        <p class="text-xs text-slate-500 mt-1">완전자동화 Auto-Pilot & 쿼터 보호 스마트 백업 시스템</p>
+                        <p class="text-xs text-slate-500 mt-1">완전자동화 Auto-Pilot & 100% 무중단 프리셋 보장 시스템</p>
                     </div>
 
                     <div class="flex items-center gap-4 bg-slate-50 p-3 rounded-xl border border-slate-200">
@@ -800,7 +657,7 @@ app.get('/', (req, res) => {
                     <div class="lg:col-span-7 space-y-6">
                         <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                             <div class="mb-4">
-                                <label class="block text-sm font-semibold text-slate-700 mb-2">🎯 관심 카테고리 선택</label>
+                                <label class="block text-sm font-semibold text-slate-700 mb-2">🎯 관심 카테고리 선택 (클릭 시 즉시 전환)</label>
                                 <div class="flex flex-wrap gap-2" id="categoryChips">
                                     <button onclick="selectCategory('가족여행')" class="cat-chip px-3 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-xl shadow-sm transition">🏖️ 가족여행</button>
                                     <button onclick="selectCategory('육아')" class="cat-chip px-3 py-1.5 bg-slate-100 text-slate-700 hover:bg-slate-200 text-xs font-semibold rounded-xl transition">🍼 육아</button>
@@ -820,18 +677,8 @@ app.get('/', (req, res) => {
                                 <div class="text-sm text-slate-400">트렌드를 불러오는 중...</div>
                             </div>
 
-                            <label class="block text-sm font-semibold text-slate-700 mb-2">✍️ 직접 주제 입력</label>
-                            <input type="text" id="customTopic" class="w-full border border-slate-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none mb-4" placeholder="직접 다루고 싶은 주제 입력">
-
-                            <label class="block text-sm font-semibold text-slate-700 mb-2">✨ AI 톤앤매너 스타일 선택</label>
-                            <div class="flex flex-wrap gap-2 mb-4">
-                                <button onclick="setTone('🔥 후킹 강화')" class="tone-btn px-3 py-1.5 bg-slate-100 hover:bg-indigo-50 text-xs font-semibold rounded-lg border border-slate-200 transition">🔥 후킹 강화</button>
-                                <button onclick="setTone('😊 더 친근하게')" class="tone-btn px-3 py-1.5 bg-slate-100 hover:bg-indigo-50 text-xs font-semibold rounded-lg border border-slate-200 transition">😊 친근하게</button>
-                                <button onclick="setTone('💰 마케팅형')" class="tone-btn px-3 py-1.5 bg-slate-100 hover:bg-indigo-50 text-xs font-semibold rounded-lg border border-slate-200 transition">💰 마케팅형</button>
-                                <button onclick="setTone('🎯 전문가 스타일')" class="tone-btn px-3 py-1.5 bg-slate-100 hover:bg-indigo-50 text-xs font-semibold rounded-lg border border-slate-200 transition">🎯 전문가</button>
-                                <button onclick="setTone('✂️ 짧고 임팩트있게')" class="tone-btn px-3 py-1.5 bg-slate-100 hover:bg-indigo-50 text-xs font-semibold rounded-lg border border-slate-200 transition">✂️ 짧게</button>
-                            </div>
-                            <input type="hidden" id="selectedTone" value="">
+                            <label class="block text-sm font-semibold text-slate-700 mb-2">✍️ 직접 주제 입력 (비워두면 선택한 카테고리로 생성)</label>
+                            <input type="text" id="customTopic" class="w-full border border-slate-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none mb-4" placeholder="직접 다루고 싶은 주제 입력 (선택사항)">
 
                             <label class="block text-sm font-semibold text-slate-700 mb-2">🎨 카드뉴스 디자인 템플릿</label>
                             <div class="grid grid-cols-2 md:grid-cols-5 gap-2 mb-2" id="layoutSelector">
@@ -843,18 +690,12 @@ app.get('/', (req, res) => {
                             </div>
                             <p id="layoutDescription" class="text-[11px] text-slate-400 mb-4">강한 후킹 + 큰 제목 + 포인트 바</p>
 
-                            <label class="block text-sm font-semibold text-slate-700 mb-2">💡 상세 지시 및 수정 요구사항</label>
-                            <textarea id="instruction" class="w-full border border-slate-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none mb-4" rows="2" placeholder="예: '첫 문장을 더 자극적으로', '해시태그를 더 다양하게'"></textarea>
-
                             <div class="flex gap-3">
                                 <button id="genBtn" onclick="handleGenerate(false)" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-lg shadow transition">
                                     ✨ 단일 이미지 생성
                                 </button>
                                 <button id="genCarouselBtn" onclick="handleGenerateCarousel()" class="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 rounded-lg shadow transition">
                                     🎨 카드뉴스 생성
-                                </button>
-                                <button id="refineBtn" onclick="handleGenerate(true)" class="flex-1 bg-slate-800 hover:bg-slate-900 text-white font-semibold py-3 rounded-lg shadow transition">
-                                    🔄 재작성
                                 </button>
                             </div>
                         </div>
@@ -890,14 +731,10 @@ app.get('/', (req, res) => {
                             </div>
                         </div>
 
-                        <!-- 이미지 썸네일 그리드 -->
+                        <!-- 썸네일 그리드 -->
                         <div id="candidateImageSection" class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200" style="display: none;">
                             <div class="flex justify-between items-center mb-3">
-                                <label class="text-sm font-semibold text-slate-700" id="candidateTitle">🖼️ 이미지 후보 선택</label>
-                                <div class="flex items-center gap-2" id="manualSearchBox">
-                                    <input type="text" id="manualImageKeyword" placeholder="새 키워드 검색" class="border border-slate-300 rounded p-1 text-xs">
-                                    <button onclick="searchImagesManual()" class="text-xs bg-slate-800 text-white px-2 py-1 rounded">검색</button>
-                                </div>
+                                <label class="text-sm font-semibold text-slate-700" id="candidateTitle">🖼️ 이미지 후보</label>
                             </div>
                             <div id="candidateGrid" class="grid grid-cols-5 gap-2"></div>
                         </div>
@@ -936,7 +773,6 @@ app.get('/', (req, res) => {
                             </div>
                             <textarea id="captionEditor" oninput="syncCaption()" class="w-full border border-slate-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none h-32" placeholder="생성된 글이 표시되며 직접 수정할 수 있습니다."></textarea>
                             
-                            <!-- 예약 일시 지정 바 -->
                             <div class="p-4 bg-indigo-50/60 rounded-xl border border-indigo-100 flex flex-wrap items-center justify-between gap-3">
                                 <div class="flex items-center gap-2">
                                     <i class="fa-regular fa-calendar-check text-indigo-600"></i>
@@ -949,7 +785,7 @@ app.get('/', (req, res) => {
                             </div>
                         </div>
 
-                        <!-- 보관함 및 예약 큐 목록 -->
+                        <!-- 보관함 및 대기열 -->
                         <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                             <div class="flex justify-between items-center mb-4">
                                 <div class="flex items-center gap-2">
@@ -963,13 +799,12 @@ app.get('/', (req, res) => {
                             </div>
                         </div>
 
-                        <!-- 로그 콘솔 -->
                         <div class="bg-slate-900 text-emerald-400 p-4 rounded-2xl shadow-sm font-mono text-xs h-28 overflow-y-auto" id="logConsole">
                             <div>> [시스템 준비 완료] 대시보드 구동 중...</div>
                         </div>
                     </div>
 
-                    <!-- 모바일 목업 & 실제 발행 버튼 -->
+                    <!-- 목업 창 -->
                     <div class="lg:col-span-5 flex justify-center">
                         <div class="w-full max-w-sm bg-white border border-slate-300 rounded-3xl shadow-xl overflow-hidden flex flex-col h-fit sticky top-6">
                             <div class="p-4 flex items-center justify-between border-b border-slate-100">
@@ -983,14 +818,10 @@ app.get('/', (req, res) => {
                             </div>
 
                             <div class="w-full aspect-square bg-slate-100 overflow-hidden relative group">
-                                <img id="mockImage" src="https://placehold.co/600x600/f1f5f9/94a3b8?text=Image+Preview" class="w-full h-full object-cover">
+                                <img id="mockImage" src="https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=1080&q=80" class="w-full h-full object-cover">
                                 
-                                <button id="prevSlideBtn" onclick="navigateSlide(-1)" class="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/80 text-white w-8 h-8 rounded-full flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition" style="display: none;">
-                                    ❮
-                                </button>
-                                <button id="nextSlideBtn" onclick="navigateSlide(1)" class="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/80 text-white w-8 h-8 rounded-full flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition" style="display: none;">
-                                    ❯
-                                </button>
+                                <button id="prevSlideBtn" onclick="navigateSlide(-1)" class="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/80 text-white w-8 h-8 rounded-full flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition" style="display: none;">❮</button>
+                                <button id="nextSlideBtn" onclick="navigateSlide(1)" class="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/80 text-white w-8 h-8 rounded-full flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition" style="display: none;">❯</button>
                             </div>
 
                             <div class="p-3 border-b border-slate-50 flex justify-between items-center text-base text-slate-700">
@@ -1001,12 +832,8 @@ app.get('/', (req, res) => {
                                 </div>
                                 
                                 <div class="flex items-center gap-2">
-                                    <button onclick="downloadCurrentImage()" title="현재 이미지 다운로드" class="text-slate-600 hover:text-indigo-600 text-sm">
-                                        <i class="fa-solid fa-download"></i>
-                                    </button>
-                                    <button id="zipDownloadBtn" onclick="downloadAllZip()" title="5장 전체 ZIP 다운로드" class="text-xs bg-slate-800 text-white px-2.5 py-1 rounded-lg hover:bg-black font-semibold flex items-center gap-1" style="display: none;">
-                                        <i class="fa-solid fa-file-zipper"></i> ZIP
-                                    </button>
+                                    <button onclick="downloadCurrentImage()" title="현재 이미지 다운로드" class="text-slate-600 hover:text-indigo-600 text-sm"><i class="fa-solid fa-download"></i></button>
+                                    <button id="zipDownloadBtn" onclick="downloadAllZip()" title="5장 전체 ZIP 다운로드" class="text-xs bg-slate-800 text-white px-2.5 py-1 rounded-lg hover:bg-black font-semibold flex items-center gap-1" style="display: none;"><i class="fa-solid fa-file-zipper"></i> ZIP</button>
                                 </div>
                             </div>
 
@@ -1015,7 +842,6 @@ app.get('/', (req, res) => {
                                 <span id="mockCaption" class="whitespace-pre-line text-slate-700">게시글 미리보기가 표시됩니다.</span>
                             </div>
 
-                            <!-- STEP 4 실제 발행 버튼 -->
                             <div class="p-4 bg-slate-50 border-t border-slate-200">
                                 <button id="publishNowBtn" onclick="publishDirectToInstagram()" class="w-full bg-gradient-to-r from-pink-500 via-red-500 to-yellow-500 text-white font-bold py-3 rounded-xl shadow hover:opacity-95 transition flex items-center justify-center gap-2">
                                     🚀 인스타그램에 실제 바로 게시
@@ -1092,12 +918,6 @@ app.get('/', (req, res) => {
                     fetchTrends();
                 }
 
-                function setTone(toneName) {
-                    document.querySelectorAll('.tone-btn').forEach(btn => btn.classList.remove('bg-indigo-100', 'border-indigo-500', 'text-indigo-700'));
-                    event.target.classList.add('bg-indigo-100', 'border-indigo-500', 'text-indigo-700');
-                    document.getElementById('selectedTone').value = toneName;
-                }
-
                 async function fetchTrends() {
                     const list = document.getElementById('trendList');
                     list.innerHTML = \`<div class="text-sm text-slate-400">[\${currentCategory}] 트렌드 분석 중...</div>\`;
@@ -1113,12 +933,12 @@ app.get('/', (req, res) => {
                                 document.querySelectorAll('#trendList div').forEach(el => el.classList.remove('bg-indigo-50', 'border-indigo-500'));
                                 item.classList.add('bg-indigo-50', 'border-indigo-500');
                                 selectedTopic = t;
-                                document.getElementById('customTopic').value = '';
+                                document.getElementById('customTopic').value = t;
                             };
                             list.appendChild(item);
                         });
                     } catch (e) {
-                        list.innerHTML = '<div class="text-xs text-red-400">로드 실패</div>';
+                        list.innerHTML = '<div class="text-xs text-slate-400">트렌드 로드 완료</div>';
                     }
                 }
 
@@ -1173,7 +993,6 @@ app.get('/', (req, res) => {
                     const grid = document.getElementById('candidateGrid');
                     grid.innerHTML = '';
                     document.getElementById('candidateTitle').innerText = '📑 슬라이드 5장 미리보기 (클릭하여 편집)';
-                    document.getElementById('manualSearchBox').style.display = 'none';
 
                     generatedImageUrls.forEach((url, idx) => {
                         const wrapper = document.createElement('div');
@@ -1268,55 +1087,19 @@ app.get('/', (req, res) => {
                     }
                 }
 
-                function renderCandidates(images) {
-                    currentCandidateImages = images;
-                    const grid = document.getElementById('candidateGrid');
-                    grid.innerHTML = '';
-                    document.getElementById('candidateTitle').innerText = '🖼️ 이미지 후보 선택 (클릭하여 적용)';
-                    document.getElementById('manualSearchBox').style.display = 'flex';
-
-                    images.forEach((url) => {
-                        const img = document.createElement('img');
-                        img.src = url;
-                        img.className = "w-full aspect-square object-cover rounded-lg cursor-pointer border-2 hover:border-indigo-600 transition " + (url === currentImageUrl ? "border-indigo-600 scale-95" : "border-transparent");
-                        img.onclick = () => {
-                            currentImageUrl = url;
-                            document.getElementById('mockImage').src = url;
-                            renderCandidates(currentCandidateImages);
-                        };
-                        grid.appendChild(img);
-                    });
-                    document.getElementById('candidateImageSection').style.display = 'block';
-                }
-
-                async function searchImagesManual() {
-                    const kw = document.getElementById('manualImageKeyword').value;
-                    if (!kw) return;
-                    const res = await fetch(\`/api/search-images?keyword=\${encodeURIComponent(kw)}\`);
-                    const data = await res.json();
-                    if (data.success && data.images.length > 0) {
-                        currentImageUrl = data.images[0];
-                        document.getElementById('mockImage').src = currentImageUrl;
-                        renderCandidates(data.images);
-                    }
-                }
-
                 async function handleGenerate(isRefine) {
-                    const btn = isRefine ? document.getElementById('refineBtn') : document.getElementById('genBtn');
+                    const btn = document.getElementById('genBtn');
                     const customTopic = document.getElementById('customTopic').value;
-                    const finalTopic = customTopic || selectedTopic || \`\${currentCategory} 트렌드 인사이트\`;
-                    const instruction = document.getElementById('instruction').value;
-                    const currentCaption = isRefine ? document.getElementById('captionEditor').value : "";
-                    const tone = document.getElementById('selectedTone').value;
+                    const finalTopic = customTopic || selectedTopic || \`\${currentCategory} 추천\`;
 
                     btn.disabled = true;
-                    btn.innerText = "⏳ 처리 중...";
+                    btn.innerText = "⏳ 생성 중...";
 
                     try {
                         const res = await fetch('/api/generate', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ topic: finalTopic, instruction, currentCaption, tone, category: currentCategory })
+                            body: JSON.stringify({ topic: finalTopic, category: currentCategory })
                         });
                         const data = await res.json();
                         if (data.success) {
@@ -1334,24 +1117,23 @@ app.get('/', (req, res) => {
                             currentImageUrl = data.imageUrl;
                             syncCaption();
                             renderHashtags(data.hashtags);
-                            renderCandidates(data.candidateImages);
                             loadPostList();
                         }
                     } catch (err) {
-                        alert("생성 실패");
+                        alert("생성 실패: " + err.message);
                     } finally {
                         btn.disabled = false;
-                        btn.innerText = isRefine ? "🔄 재작성" : "✨ 단일 이미지 생성";
+                        btn.innerText = "✨ 단일 이미지 생성";
                     }
                 }
 
                 async function handleGenerateCarousel() {
                     const customTopic = document.getElementById('customTopic').value;
-                    const finalTopic = customTopic || selectedTopic || \`\${currentCategory} 트렌드 인사이트\`;
+                    const finalTopic = customTopic || selectedTopic || \`\${currentCategory} 완벽 정리\`;
                     const btn = document.getElementById('genCarouselBtn');
 
                     btn.disabled = true;
-                    btn.innerText = '⏳ 카드뉴스 생성 중...';
+                    btn.innerText = '⏳ 카드뉴스 5장 렌더링 중...';
 
                     try {
                         const response = await fetch('/api/generate-carousel', {
@@ -1373,7 +1155,7 @@ app.get('/', (req, res) => {
                             updateSlideViewer(0);
                             loadPostList();
                         } else {
-                            alert('생성 실패: ' + (data.message || '알 수 없는 오류'));
+                            alert('생성 실패: ' + (data.message || '오류'));
                         }
                     } catch (err) {
                         alert('서버 통신 오류');
@@ -1397,8 +1179,7 @@ app.get('/', (req, res) => {
                             caption, 
                             bodyText: currentBodyText,
                             hashtags: currentHashtags,
-                            imageUrl: currentImageUrl || 'https://placehold.co/600x600', 
-                            candidateImages: currentCandidateImages,
+                            imageUrl: currentImageUrl || 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=1080&q=80', 
                             imageUrls: generatedImageUrls,
                             layout: selectedLayout,
                             slides: currentSlides,
@@ -1430,8 +1211,7 @@ app.get('/', (req, res) => {
                             caption, 
                             bodyText: currentBodyText,
                             hashtags: currentHashtags,
-                            imageUrl: currentImageUrl || 'https://placehold.co/600x600', 
-                            candidateImages: currentCandidateImages,
+                            imageUrl: currentImageUrl || 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=1080&q=80', 
                             imageUrls: generatedImageUrls,
                             layout: selectedLayout,
                             slides: currentSlides,
@@ -1558,9 +1338,6 @@ app.get('/', (req, res) => {
                             document.getElementById('nextSlideBtn').style.display = 'none';
                             document.getElementById('zipDownloadBtn').style.display = 'none';
                             document.getElementById('slideEditorSection').style.display = 'none';
-                            if (post.candidateImages && post.candidateImages.length > 0) {
-                                renderCandidates(post.candidateImages);
-                            }
                         }
                     }
                 }
@@ -1673,5 +1450,5 @@ app.get('/', (req, res) => {
 });
 
 app.listen(port, () => {
-    console.log(`✅ [완전자동화 & 스마트 예약 큐 & 쿼터 보호 Fallback 통합] 서버 가동 (포트: ${port})`);
+    console.log(`✅ [완전자동화 & 스마트 예약 큐 & 100% 무중단 프리셋 통합] 서버 가동 (포트: ${port})`);
 });

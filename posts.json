@@ -1,5 +1,86 @@
 [
   {
+    "id": "1787983724959",
+    "category": "가족여행",
+    "topic": "가족여행 가서 싸움 방지하는 '평화 유지' 필수 꿀팁 5가지",
+    "caption": "아이 챙기랴 부모님 눈치 보랴 매번 지치셨나요? 😭\n동선은 짧고 만족도는 200%인 3대 가족 맞춤 힐링 여행 코스를 정리해 드립니다!\n\n이번 주말 가족들과 행복한 추억을 만들어보세요 ✨\n\n#가족여행 #3대여행 #아이랑여행 #부모님여행 #가족여행지추천 #주말나들이 #국내여행 #힐링여행 #여행꿀팁 #가족휴가 #육아맘 #주말가족모임 #키즈여행 #효도여행 #전국여행",
+    "bodyText": "아이 챙기랴 부모님 눈치 보랴 매번 지치셨나요? 😭\n동선은 짧고 만족도는 200%인 3대 가족 맞춤 힐링 여행 코스를 정리해 드립니다!\n\n이번 주말 가족들과 행복한 추억을 만들어보세요 ✨",
+    "hashtags": {
+      "core": [
+        "#가족여행",
+        "#3대여행",
+        "#아이랑여행",
+        "#부모님여행",
+        "#가족여행지추천"
+      ],
+      "expand": [
+        "#주말나들이",
+        "#국내여행",
+        "#힐링여행",
+        "#여행꿀팁",
+        "#가족휴가"
+      ],
+      "target": [
+        "#육아맘",
+        "#주말가족모임",
+        "#키즈여행",
+        "#효도여행",
+        "#전국여행"
+      ]
+    },
+    "imageUrl": "/generated/slide_1787983722546_1.png",
+    "imageUrls": [
+      "/generated/slide_1787983722546_1.png",
+      "/generated/slide_1787983723312_2.png",
+      "/generated/slide_1787983723818_3.png",
+      "/generated/slide_1787983724334_4.png",
+      "/generated/slide_1787983724834_5.png"
+    ],
+    "layout": "editorial",
+    "slides": [
+      {
+        "type": "cover",
+        "imageKeyword": "family trip",
+        "title": "가족여행 가서 싸움 방지하는 '평화 유지' 필수 꿀팁 5가지",
+        "subtitle": "아이도 부모님도 200% 만족하는 비결",
+        "imageUrl": "https://images.unsplash.com/photo-1522777642-5cd2999bca62?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3wxMDQ3MDgxfDB8MXxzZWFyY2h8MXx8ZmFtaWx5JTIwdHJpcHxlbnwwfDJ8fHwxNzg3OTgzNzE5fDA&ixlib=rb-4.1.0&q=80&w=1080"
+      },
+      {
+        "type": "body",
+        "imageKeyword": "resort scenery",
+        "step": "01",
+        "title": "동선 최소화 리조트",
+        "content": "숙소 안에서 식사와 산책, 키즈존이 모두 해결되는 올인원 스팟을 선택하세요.",
+        "imageUrl": "https://images.unsplash.com/photo-1785896501851-a1d91a99faad?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3wxMDQ3MDgxfDB8MXxzZWFyY2h8MXx8cmVzb3J0JTIwc2NlbmVyeXxlbnwwfDJ8fHwxNzg3OTgzNzIwfDA&ixlib=rb-4.1.0&q=80&w=1080"
+      },
+      {
+        "type": "body",
+        "imageKeyword": "delicious food",
+        "step": "02",
+        "title": "호불호 없는 식당 예약",
+        "content": "자극적인 메뉴 대신 정갈한 한식당이나 룸이 있는 개별 식당을 사전 예약합니다.",
+        "imageUrl": "https://images.unsplash.com/photo-1659881981676-33ab127152c0?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3wxMDQ3MDgxfDB8MXxzZWFyY2h8MXx8ZGVsaWNpb3VzJTIwZm9vZHxlbnwwfDJ8fHwxNzg3OTgzNzIxfDA&ixlib=rb-4.1.0&q=80&w=1080"
+      },
+      {
+        "type": "body",
+        "imageKeyword": "relax forest",
+        "step": "03",
+        "title": "1일 1메인 일정 원칙",
+        "content": "욕심내서 여러 군데 돌지 말고, 오전 1곳 방문 후 오후는 무조건 휴식!",
+        "imageUrl": "https://images.unsplash.com/photo-1625749670846-8d5629e85a01?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3wxMDQ3MDgxfDB8MXxzZWFyY2h8MXx8cmVsYXglMjBmb3Jlc3R8ZW58MHwyfHx8MTc4Nzk4MzcyMXww&ixlib=rb-4.1.0&q=80&w=1080"
+      },
+      {
+        "type": "outro",
+        "imageKeyword": "sunset family",
+        "title": "저장해두고 이번 주말\n여행 계획에 써먹어보세요!",
+        "subtitle": "좋아요 & 팔로우 부탁드립니다",
+        "imageUrl": "https://images.unsplash.com/photo-1528256507509-cc4facea43f6?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3wxMDQ3MDgxfDB8MXxzZWFyY2h8MXx8c3Vuc2V0JTIwZmFtaWx5fGVufDB8Mnx8fDE3ODc5ODM3MjJ8MA&ixlib=rb-4.1.0&q=80&w=1080"
+      }
+    ],
+    "status": "DRAFT",
+    "createdAt": "2026-08-29T06:08:44.959Z"
+  },
+  {
     "id": "1787979496319",
     "topic": "아이랑 부모님 모두 만족하는 '절대 안 싸우는' 여행 코스",
     "caption": "3대가 함께 떠나는 가족 여행, 매번 의견 안 맞아 힘들고 싸우셨나요? 😭\n\n아이 체력과 부모님 체력, 식성까지 완벽 고려한 '절대 안 싸우는' 3대 가족 여행 핵심 코스 팁을 공개합니다!\n\n이번 주말/연휴 여행 계획이 있다면 당장 저장하고 공유해보세요 ✨\n\n#가족여행 #3대여행 #아이랑여행 #부모님모시고여행 #여행코스추천 #주말나들이 #가족여행지추천 #국내여행",
